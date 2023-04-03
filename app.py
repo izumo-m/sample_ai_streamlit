@@ -1,46 +1,46 @@
-# 以下を「app.py」に書き込み
+
 import streamlit as st
-import matplotlib.pyplot as plt
-from PIL import Image
-from model import predict
+import openai
 
-st.set_option("deprecation.showfileUploaderEncoding", False)
+# Streamlit Community Cloudの「Secrets」からOpenAI API keyを取得
+openai.api_key = st.secrets.OpenAIAPI.openai_api_key
 
-st.sidebar.title("画像認識アプリ")
-st.sidebar.write("オリジナルの画像認識モデルを使って何の画像かを判定します。")
+# st.session_stateを使いメッセージのやりとりを保存
+if "messages" not in st.session_state:
+    st.session_state["messages"] = [
+        {"role": "system", "content": st.secrets.AppSettings.chatbot_setting}
+        ]
 
-st.sidebar.write("")
+# チャットボットとやりとりする関数
+def communicate():
+    messages = st.session_state["messages"]
 
-img_source = st.sidebar.radio("画像のソースを選択してください。",
-                              ("画像をアップロード", "カメラで撮影"))
-if img_source == "画像をアップロード":
-    img_file = st.sidebar.file_uploader("画像を選択してください。", type=["png", "jpg"])
-elif img_source == "カメラで撮影":
-    img_file = st.camera_input("カメラで撮影")
+    user_message = {"role": "user", "content": st.session_state["user_input"]}
+    messages.append(user_message)
 
-if img_file is not None:
-    with st.spinner("推定中..."):
-        img = Image.open(img_file)
-        st.image(img, caption="対象の画像", width=480)
-        st.write("")
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=messages
+    )  
 
-        # 予測
-        results = predict(img)
+    bot_message = response["choices"][0]["message"]
+    messages.append(bot_message)
 
-        # 結果の表示
-        st.subheader("判定結果")
-        n_top = 3  # 確率が高い順に3位まで返す
-        for result in results[:n_top]:
-            st.write(str(round(result[2]*100, 2)) + "%の確率で" + result[0] + "です。")
+    st.session_state["user_input"] = ""  # 入力欄を消去
 
-        # 円グラフの表示
-        pie_labels = [result[1] for result in results[:n_top]]
-        pie_labels.append("others")
-        pie_probs = [result[2] for result in results[:n_top]]
-        pie_probs.append(sum([result[2] for result in results[n_top:]]))
-        fig, ax = plt.subplots()
-        wedgeprops={"width":0.3, "edgecolor":"white"}
-        textprops = {"fontsize":6}
-        ax.pie(pie_probs, labels=pie_labels, counterclock=False, startangle=90,
-               textprops=textprops, autopct="%.2f", wedgeprops=wedgeprops)  # 円グラフ
-        st.pyplot(fig)
+
+# ユーザーインターフェイスの構築
+st.title("My AI Assistant")
+st.write("ChatGPT APIを使ったチャットボットです。")
+
+user_input = st.text_input("メッセージを入力してください。", key="user_input", on_change=communicate)
+
+if st.session_state["messages"]:
+    messages = st.session_state["messages"]
+
+    for message in reversed(messages[1:]):  # 直近のメッセージを上に
+        speaker = "🙂"
+        if message["role"]=="assistant":
+            speaker="🤖"
+
+        st.write(speaker + ": " + message["content"])
